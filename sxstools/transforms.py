@@ -358,7 +358,6 @@ def VolumeDataCartesianToSpectral(cartesian_vol_data, r1=-1, r2=1):
     )
 
     # Construct PClm
-    
 
     cs = ChebyshevSpectral(a=r1, b=r2, Nfuncs=n_r)
 
@@ -1136,4 +1135,3 @@ def jacobian_grid_frame_spherical_polar_to_inertial_frame_cartesian(
     anc_spherical_polar_coords = [radius, theta, phi_inertial]
 
     return jacobian_spherical_polar_to_cartesian(anc_spherical_polar_coords)
-
