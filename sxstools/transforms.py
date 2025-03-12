@@ -5,7 +5,7 @@ from qlmtools.diagnostics import method_info
 from spectral.spherical.swsh import Yslm_vec, Yslm_prec
 from waveformtools.single_mode import SingleMode
 from spectral.chebyshev.chebyshev import ChebyshevSpectral
-
+import sxstools.rotations as rotations
 
 import re
 
@@ -1104,7 +1104,6 @@ def compute_displacement_AB(coords_aha_center, coords_ahb_center):
 
     hca_x, hca_y, hca_z = coords_aha_center
     hcb_x, hcb_y, hcb_z = coords_ahb_center
-
     hab_x = hca_x - hcb_x
     hab_y = hca_y - hcb_y
     hab_z = hca_z - hcb_z
@@ -1118,7 +1117,6 @@ def compute_x_grid_frame_angle(displacement_vector_AB):
     the displacement vector AB"""
 
     hab_x, hab_y, _ = displacement_vector_AB
-
     phiX = np.unwrap(np.arctan2(hab_y, hab_x))
 
     return phiX
@@ -1129,9 +1127,281 @@ def jacobian_grid_frame_spherical_polar_to_inertial_frame_cartesian(
 ):
 
     radius, theta, phi = grid_frame_spherical_polar_coords
-
     phi_inertial = phi + phiX
-
     anc_spherical_polar_coords = [radius, theta, phi_inertial]
 
     return jacobian_spherical_polar_to_cartesian(anc_spherical_polar_coords)
+
+
+def transform_coordinate_system(t_ref, 
+                                waveform_times, 
+                                waveform_modes, 
+                                horizon_times,
+                                xA, 
+                                xB,
+                                massA,
+                                massB,
+                                chiA, 
+                                chiB, 
+                                chiC_f,
+                                velC_f,
+                                flipped=False
+                                ):
+    """Transform the spins and the waveform modes of the binary from the 
+    ID coordinates to the coordinate system at t_ref
+    """
+
+    # Find the index of the reference time on the horizon
+    horizon_t_ref_idx = np.argmin(abs(horizon_times - t_ref))
+    Lhat = compute_angular_momentum_direction(horizon_t_ref_idx, 
+                                              xA, 
+                                              xB,
+                                              massA,
+                                              massB,
+                                             )
+
+    Omegahat =  compute_rotation_plane_normal(horizon_t_ref_idx, 
+                                              xA, 
+                                              xB,
+                                             )
+
+    #np.testing.assert_array_almost_equal(Lhat, Omagahat, 8, "The rotation plane direction is different from Angular momentum direction")
+    print("Lhat and omegahat", Lhat, Omegahat)
+
+    xA_rot_z, xB_rot_z, chiA_rot_z, chiB_rot_z, chiC_f_rot_z, velC_f_rot_z, waveform_modes_rot_z = \
+                                align_parameters_along_z(waveform_times,
+                                                         xA, 
+                                                         xB,
+                                                         chiA, 
+                                                         chiB, 
+                                                         chiC_f,
+                                                         velC_f, 
+                                                         waveform_modes,
+                                                         Lhat
+                                                         )
+    print(chiC_f_rot_z)
+    xA_rot_xyz, xB_rot_xyz, chiA_rot_xyz, chiB_rot_xyz, chiC_f_rot_xyz, velC_f_rot_xyz, waveform_modes_rot_xyz =\
+                            align_parameters_along_xy(horizon_t_ref_idx, 
+                                                      waveform_times, 
+                                                      waveform_modes_rot_z, 
+                                                      xA_rot_z, 
+                                                      xB_rot_z,
+                                                      chiA_rot_z, 
+                                                      chiB_rot_z, 
+                                                      chiC_f_rot_z,
+                                                      velC_f_rot_z,)
+
+    print(chiC_f_rot_xyz)
+    return xA_rot_xyz, xB_rot_xyz, chiA_rot_xyz, chiB_rot_xyz, chiC_f_rot_xyz[0], velC_f_rot_xyz[0], waveform_modes_rot_xyz
+
+
+def compute_angular_momentum_direction(horizon_t_ref_idx, 
+                                       xA, 
+                                       xB,
+                                       massA,
+                                       massB,):
+    
+
+    # Compute angular momentum (ignore dt for direction)
+    dxA = np.diff(xA, axis=0)[horizon_t_ref_idx]
+    dxB = np.diff(xB, axis=0)[horizon_t_ref_idx]
+    pAdt = massA*dxA
+    pBdt = massB*dxB
+    lAdt = np.cross(xA[horizon_t_ref_idx], pAdt)
+    lBdt = np.cross(xB[horizon_t_ref_idx], pBdt)
+    Ldt = lAdt + lBdt
+    Lhat = Ldt/np.sqrt((np.dot(Ldt, Ldt)))
+    return Lhat
+
+
+def compute_rotation_plane_normal(horizon_t_ref_idx, 
+                                       xA, 
+                                       xB,
+                                    ):
+    
+
+    # Compute angular momentum (ignore dt for direction)
+    dxA = np.diff(xA, axis=0)[horizon_t_ref_idx]
+    dxB = np.diff(xB, axis=0)[horizon_t_ref_idx]
+ 
+    omegaAdt = np.cross(xA[horizon_t_ref_idx], dxA)
+    omegaBdt = np.cross(xB[horizon_t_ref_idx], dxB)
+
+    #Ldt = lAdt + lBdt
+    omegadt = omegaAdt
+
+    omegaAhat = omegaAdt/np.sqrt((np.dot(omegaAdt, omegaAdt)))
+    omegaBhat = omegaBdt/np.sqrt((np.dot(omegaBdt, omegaBdt)))
+    
+    print("Omegahats", omegaAhat, omegaBhat)
+
+    omegahat = omegadt/np.sqrt((np.dot(omegadt, omegadt)))
+
+    return omegahat
+
+
+def align_parameters_along_z(waveform_times,
+                             xA, 
+                             xB,
+                             chiA, 
+                             chiB, 
+                             chiC_f,
+                             velC_f, 
+                             waveform_modes,
+                             Lhat
+                            ):
+
+    n_hor_times, _ = xA.shape
+    n_wfm_times = len(waveform_times)
+    # Align the z-direction
+    q0_z = rotations.alignVec_quat(Lhat)
+    q0_vec_z = np.array([q0_z]*n_hor_times).T
+    xA_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
+                                                      xA.T, 
+                                                      inverse=1).T
+    xB_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
+                                                      xB.T, 
+                                                      inverse=1).T
+    chiA_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
+                                                        chiA.T, 
+                                                        inverse=1).T
+    chiB_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
+                                                        chiB.T, 
+                                                        inverse=1).T
+
+    if np.shape(chiC_f) != (3,):
+        raise ValueError('Expected a single spin triple for chiC_f')
+    
+    chiC_f_rot_z = rotations.transformTimeDependentVector(np.array([q0_z]).T, 
+                                                        np.array([chiC_f]).T, 
+                                                        inverse=1).T
+    
+    if np.shape(velC_f) != (3,):
+        raise Exception('Expected a single spin triple for velC_f_coord')
+    
+    velC_f_rot_z = rotations.transformTimeDependentVector(np.array([q0_z]).T,
+                                                        np.array([velC_f]).T, 
+                                                        inverse=1).T
+    q0_wfm_z = q0_vec_z = np.array([q0_z]*n_wfm_times).T
+    waveform_modes_rot_z = rotations.transformWaveform(waveform_times, 
+                                                       q0_wfm_z, 
+                                                       waveform_modes, 
+                                                       inverse=1)
+
+    print(chiC_f_rot_z)
+    return xA_rot_z, xB_rot_z, chiA_rot_z, chiB_rot_z, chiC_f_rot_z, velC_f_rot_z, waveform_modes_rot_z
+
+
+def align_parameters_along_xy(horizon_t_ref_idx, 
+                             waveform_times, 
+                             waveform_modes_rot_z, 
+                             xA_rot_z, 
+                             xB_rot_z,
+                             chiA_rot_z, 
+                             chiB_rot_z, 
+                             chiC_f_rot_z,
+                             velC_f_rot_z,
+                             ):
+
+
+    # Align in the x-y plane
+    phi_A = np.angle(xA_rot_z[horizon_t_ref_idx,0] + 1.j*xA_rot_z[horizon_t_ref_idx,1])
+    phi_B = np.angle(-xB_rot_z[horizon_t_ref_idx,0] - 1.j*xB_rot_z[horizon_t_ref_idx,1])
+
+    # If this fails, try aligning at earlier times
+    dphase_ang = abs(np.angle(np.exp(1.j*(phi_A - phi_B))))
+    if dphase_ang > 0.15:
+        print(horizon_t_ref_idx)
+        print(min(waveform_times), max(waveform_times))
+        raise ValueError(f"Got different x-y rotations from the black holes! err={dphase_ang}")
+    
+    n_hor_times, _ = xA_rot_z.shape
+    n_wfm_times = len(waveform_times)
+
+    q1_xy = rotations.zRotationQuat(phi_A)
+    q1_xy_vec = np.array([q1_xy]*n_hor_times).T
+
+    xA_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
+                                                        xA_rot_z.T, 
+                                                        inverse=1).T
+    xB_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
+                                                        xB_rot_z.T, 
+                                                        inverse=1).T
+    chiA_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
+                                                          chiA_rot_z.T, 
+                                                          inverse=1).T
+    chiB_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
+                                                          chiB_rot_z.T, 
+                                                          inverse=1).T
+    chiC_f_rot_xyz = rotations.transformTimeDependentVector(np.array([q1_xy]).T, 
+                                                          chiC_f_rot_z.T,
+                                                          inverse=1).T
+    velC_f_rot_xyz = rotations.transformTimeDependentVector(np.array([q1_xy]).T,
+                                                          velC_f_rot_z.T, 
+                                                          inverse=1).T
+    waveform_modes_rot_xyz = rotations.transformWaveform(waveform_times, 
+                                                         np.array([q1_xy]*n_wfm_times).T, 
+                                                         waveform_modes_rot_z, 
+                                                         inverse=1)
+
+    print(chiC_f_rot_xyz)
+
+    return xA_rot_xyz, xB_rot_xyz, chiA_rot_xyz, chiB_rot_xyz, chiC_f_rot_xyz, velC_f_rot_xyz, waveform_modes_rot_xyz 
+
+def plot_trajectories():
+
+    import matplotlib.pyplot as plt
+    # Two subplots
+    fig, axarr = plt.subplots(1, 2, figsize=(16, 8))
+    # Plot x-y coords of BhA
+    ax = axarr[0]
+    ax.plot(xA_aln.T[0], xA_aln.T[1])
+    ax.plot(xA_aln[iAlign][0], xA_aln[iAlign][1], 'ro')
+    ax.axhline(y=0, color='k')
+    ax.axvline(x=0, color='k')
+    ax.set_xlabel('xA')
+    ax.set_ylabel('yA')
+    # Plot x-y coords of BhB
+    ax = axarr[1]
+    ax.plot(xB_aln.T[0], xB_aln.T[1])
+    ax.plot(xB_aln[iAlign][0], xB_aln[iAlign][1], 'ro')
+    ax.axhline(y=0, color='k')
+    ax.axvline(x=0, color='k')
+    ax.set_xlabel('xB')
+    ax.set_ylabel('yB')
+    plt.savefig('xA_aln.png', bbox_inches='tight')
+    plt.close()
+    exit()
+
+
+def quaternionic_coordinate_transform_sanity_check(t_ref, 
+                                waveform_times, 
+                                waveform_modes, 
+                                horizon_times,
+                                xA, 
+                                xB, 
+                                massA,
+                                massB,
+                                chiA, 
+                                chiB, 
+                                chiC_f,
+                                velC_f,
+                                flipped=False):
+    # Some sanity checks
+    if abs(horizon_times[0]) > 1.:
+        raise ValueError(f"Expected t_horizon[0]=0, got {horizon_times[0]}")
+
+    max_horizon_dt =  max(np.diff(horizon_times))
+    if max_horizon_dt> 5.:
+        raise ValueError(f"Largest time step is {max_horizon_dt} - missing horizon data?")
+    max_waveform_dt = max(np.diff(waveform_times))
+    if max_waveform_dt > 5.:
+        raise ValueError(f"Largest time step is {max_waveform_dt} - missing waveform data?")
+    if abs(xA[0, 1]) + abs(xA[0,2]) > 0.5:
+        raise ValueError(f"Expected xA to start roughly on the x-axis: {xA[0]}")
+    if abs(xB[0,1]) + abs(xB[0,2]) > 0.5:
+        raise ValueError(f"Expected xB to start roughly on the x-axis: {xB[0]}")
+    if (not flipped) and (xA[0,0] < 0.5 or xB[0,0] > -1.):
+        raise ValueError("Expected xA to be on the +ive x-axis, xB on -ive.")
+    if flipped and (xA[0,0] > -1. or xB[0,0] < 1.):
+        raise ValueError("Expected xA to be on the -ive x-axis for flipped")
