@@ -359,7 +359,7 @@ Similar to transformWaveform but does not rely on GWFrames.
         L += 1
     return res
 
-def transformWaveform(t, quat, h, inverse=0):
+def transformWaveform(t, quat, h, inverse=0, return_wfm=False):
     """Transforms a waveform h according to some frame expressed as unit
     quaternions.
 
@@ -386,7 +386,10 @@ def transformWaveform(t, quat, h, inverse=0):
 
     w.to_inertial_frame()
 
-    return w.data.T
+    if return_wfm:
+        return w
+    else:
+        return w.data.T
 
 #-------------------------------------------------------------------------
 def alignVec_quat(vec):

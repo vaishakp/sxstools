@@ -34,7 +34,10 @@ class CoordinateTransform:
                  normal_direction='Lhat',
                  Omegahat_choice='AhA',
                  waveform_times=None,
-                 method='fine'
+                 method='fine',
+                 additional_vectors_to_transform=None,
+                 additional_vector_timeseries_to_transform=None,
+                 return_wfm=True
                  ):
         
         self.t_ref = t_ref
@@ -71,99 +74,88 @@ class CoordinateTransform:
         self.normal_direction=normal_direction
         self.Omegahat_choice = Omegahat_choice
         self.method = method
+        self.additional_vectors_to_transform = additional_vectors_to_transform
+        self.additional_vector_timeseries_to_transform = additional_vector_timeseries_to_transform
+        self.return_wfm = return_wfm
 
         if self.method=='fine':
-            self.xA_t = self.xA_t_fine
-            self.xB_t = self.xB_t_fine
-            self.dxA_t = self.dxA_t_fine
-            self.dxB_t = self.dxB_t_fine
-            self.xA_rot_z_t = self.xA_rot_z_t_fine
-            self.xB_rot_z_t = self.xB_rot_z_t_fine
-            self.dxA_rot_z_t = self.dxA_rot_z_t_fine
-            self.dxB_rot_z_t = self.dxB_rot_z_t_fine
+            self.eval = self.eval_rough
+            self.eval_derivative = self.eval_derivative_fine
         else:
-            self.xA_t = self.xA_t_rough
-            self.xB_t = self.xB_t_rough
-            self.dxA_t = self.dxA_t_rough
-            self.dxB_t = self.dxB_t_rough
-            self.xA_rot_z_t = self.xA_rot_z_t_rough
-            self.xB_rot_z_t = self.xB_rot_z_t_rough
-            self.dxA_rot_z_t = self.dxA_rot_z_t_rough
-            self.dxB_rot_z_t = self.dxB_rot_z_t_rough
-        
+            self.eval = self.eval_rough
+            self.eval_derivative = self.eval_derivative_rough
+
+        self.vector_timeseries_to_transform = {'xA' : self.xA,
+                                               'xB' : self.xB,
+                                               'chiA': self.chiA, 
+                                               'chiB': self.chiB
+                                               }
+        self.vectors_to_transform = {'chiC_final' : self.chiC_final,
+                                     'v_kick' : self.v_kick
+                                    }
+
+        if self.additional_vectors_to_transform is not None:
+            for item in self.vectors_to_transform:
+                if item in self.additional_vectors_to_transform.keys():
+                    raise ValueError(f"Cannot add additional item {item} to list as it is a default item")
+            self.vectors_to_transform.update(self.additional_vectors_to_transform)
+
+
+        if self.additional_vector_timeseries_to_transform is not None:
+            for item in self.vector_timeseries_to_transform:
+                if item in self.additional_vector_timeseries_to_transform.keys():
+                    raise ValueError(f"Cannot add additional item {item} to list as it is a default item")
+            self.vector_timeseries_to_transform.update(self.additional_vector_timeseries_to_transform)
+
+        self.interpolants = {}
         self.construct_interpolants()
 
         # To hold the result
         self.transformed_quantities = {}
+        self.ref_parameter_keys = ['chiA', 'chiB', 'chiC_final', 'v_kick']
+        self.reference_parameters = {'massA' : massA,
+                                     'massB' : massB}
 
-    
     def construct_interpolants(self):
         ''' Construct interpolants for variables '''
 
         if self.method=='fine':
-            self._xA_interpolant = self.interpolate(self.horizon_times, self.xA)
-            self._xB_interpolant = self.interpolate(self.horizon_times, self.xB)
-            self._chiA_interpolant = self.interpolate(self.horizon_times, self.chiA)
-            self._chiB_interpolant = self.interpolate(self.horizon_times, self.chiB)
+            for var_name, var_value in self.vector_timeseries_to_transform.items():
+                self.interpolants.update({var_name : self.interpolate(self.horizon_times, var_value)})
 
     def construct_interpolants_rot_z(self):
-        ''' Construct interpolants for variables '''
+        ''' Construct interpolants for timeseries variables '''
         if self.method=='fine':
-            self._xA_rot_z_interpolant = self.interpolate(self.horizon_times, self.xA_rot_z)
-            self._xB_rot_z_interpolant = self.interpolate(self.horizon_times, self.xB_rot_z)
-    
-    def xA_t_fine(self, t_ref):
-        return np.array([self._xA_interpolant[idx](t_ref) for idx in range(3)])
+            for var_name, var_value in self.transformed_quantities.items():
+                if var_name in self.vector_timeseries_to_transform.keys():
+                    if '_rot_z' in var_name:
+                        self.interpolants.update({var_name : self.interpolate(self.horizon_times, var_value)})
 
-    def xB_t_fine(self, t_ref):
-        return np.array([self._xB_interpolant[idx](t_ref) for idx in range(3)])
-
-    def xA_t_rough(self, t_ref=None):
-        return self.xA[self.t_ref_idx_horizon]
+    def get(self, var_name):
+        if 'rot_' not in var_name:
+            try:
+                return self.vector_timeseries_to_transform[var_name]
+            except KeyError:
+                return self.vectors_to_transform[var_name]
+        else:
+            return self.transformed_quantities[var_name]
+        
+    def eval_fine(self, var_name, t_ref):
+        _, ncols = self.vector_timeseries_to_transform[var_name].shape
+        return np.array([self.interpolants[var_name][idx](t_ref) for idx in range(ncols)])
     
-    def xB_t_rough(self, t_ref=None):
-        return self.xB[self.t_ref_idx_horizon]
-    
-    def dxA_t_fine(self, t_ref):
-        return np.array([self._xA_interpolant[idx].derivative()(t_ref) for idx in range(3)])
+    def eval_rough(self, var_name, t_ref=None):
+        try:
+            return self.vector_timeseries_to_transform[var_name][self.t_ref_idx_horizon]
+        except KeyError:
+            return self.transformed_quantities[var_name][self.t_ref_idx_horizon]
+        
+    def eval_derivative_fine(self, var_name, t_ref):
+        _, ncols = self.vector_timeseries_to_transform[var_name].shape
+        return np.array([self.interpolants[var_name][idx].derivative()(t_ref) for idx in range(ncols)])
 
-    def dxB_t_fine(self, t_ref):
-        return np.array([self._xB_interpolant[idx].derivative()(t_ref) for idx in range(3)])
-    
-    def dxA_t_rough(self, t_ref=None):
-        return np.diff(self.xA, axis=0)[self.t_ref_idx_horizon]
-    
-    def dxB_t_rough(self, t_ref=None):
-        return np.diff(self.xB, axis=0)[self.t_ref_idx_horizon]
-    
-    def xA_rot_z_t_fine(self, t_ref):
-        return np.array([self._xA_rot_z_interpolant[idx](t_ref) for idx in range(3)])
-
-    def xB_rot_z_t_fine(self, t_ref):
-        return np.array([self._xB_rot_z_interpolant[idx](t_ref) for idx in range(3)])
-    
-    def xA_rot_z_t_rough(self, t_ref=None):
-        return self.xA_rot_z[self.t_ref_idx_horizon]
-    
-    def xB_rot_z_t_rough(self, t_ref=None):
-        return self.xB_rot_z[self.t_ref_idx_horizon]
-    
-    def dxA_rot_z_t_fine(self, t_ref):
-        return np.array([self._xA_rot_z_interpolant[idx].derivative()(t_ref) for idx in range(3)])
-
-    def dxB_rot_z_t_fine(self, t_ref):
-        return np.array([self._xB_rot_z_interpolant[idx].derivative()(t_ref) for idx in range(3)])
-
-    def dxA_rot_z_t_rough(self, t_ref=None):
-        return np.diff(self.xA_rot_z, axis=0)[self.t_ref_idx_horizon]
-
-    def dxB_rot_z_t_rough(self, t_ref=None):
-        return np.diff(self.xB_rot_z, axis=0)[self.t_ref_idx_horizon]
-
-    def compute_reference_values(self):
-
-        self.chiA_ref = np.array([self.interpolate(self.horizon_times, self.chiA_rot_xyz)[idx](self.t_ref) for idx in range(3)])
-        self.chiB_ref = np.array([self.interpolate(self.horizon_times, self.chiB_rot_xyz)[idx](self.t_ref) for idx in range(3)])
+    def eval_derivative_rough(self, var_name, t_ref=None):
+        return np.diff(self.vector_timeseries_to_transform[var_name], axis=0)[self.t_ref_idx_horizon]
 
     def interpolate(self, time, data):
         _, n_cols = data.shape
@@ -178,33 +170,24 @@ class CoordinateTransform:
         ''' Compute the unit vector in the direction of the 
         total angular momentum (orbital) of the BHs'''
 
-        # Compute angular momentum (ignore dt for direction)
-        #dxA = np.diff(self.xA, axis=0)[self.t_ref_idx_horizon]
-        #dxB = np.diff(self.xB, axis=0)[self.t_ref_idx_horizon]
-        dxA = self.dxA_t(self.t_ref)
-        dxB = self.dxB_t(self.t_ref)
+        dxA = self.eval_derivative('xA', self.t_ref)
+        dxB = self.eval_derivative('xB', self.t_ref)
         pAdt = self.massA*dxA
         pBdt = self.massB*dxB
-        #lAdt = np.cross(self.xA[self.t_ref_idx_horizon], pAdt)
-        #lBdt = np.cross(self.xB[self.t_ref_idx_horizon], pBdt)
-        lAdt = np.cross(self.xA_t(self.t_ref), pAdt)
-        lBdt = np.cross(self.xB_t(self.t_ref), pBdt)
+        lAdt = np.cross(self.eval('xA', self.t_ref), pAdt)
+        lBdt = np.cross(self.eval('xB', self.t_ref), pBdt)
         Ldt = lAdt + lBdt
         self.Lhat = Ldt/np.sqrt((np.dot(Ldt, Ldt)))
-
+        
     def compute_rotation_plane_normal(self):
         ''' Compute the direction of the rotation plane of the
         BHs and return either one of them. '''
 
         # Compute rotation plane individually
-        dxA = np.diff(self.xA, axis=0)[self.t_ref_idx_horizon]
-        dxB = np.diff(self.xB, axis=0)[self.t_ref_idx_horizon]
-        #dxA = self.dxA_t(self.t_ref)
-        #dxB = self.dxB_t(self.t_ref)
-        omegaAdt = np.cross(self.xA[self.t_ref_idx_horizon], dxA)
-        omegaBdt = np.cross(self.xB[self.t_ref_idx_horizon], dxB)
-        #omegaAdt = np.cross(self.xA_t(self.t_ref), dxA)
-        #omegaBdt = np.cross(self.xB_t(self.t_ref), dxB)
+        dxA = self.eval_derivative_rough('xA')
+        dxB = self.eval_derivative_rough('xB')
+        omegaAdt = np.cross(self.eval_rough('xA'), dxA)
+        omegaBdt = np.cross(self.eval_rough('xB'), dxB)
         omegaAhat = omegaAdt/np.sqrt((np.dot(omegaAdt, omegaAdt)))
         omegaBhat = omegaBdt/np.sqrt((np.dot(omegaBdt, omegaBdt)))
 
@@ -216,44 +199,73 @@ class CoordinateTransform:
         print("Omegahats", omegaAhat, omegaBhat)
         self.Omegahat = omegadt/np.sqrt((np.dot(omegadt, omegadt)))
 
+
+    def transform_one_vector_timeseries_along_z(self, var_name):
+        ''' Transform the vector recognized by the key to the 
+        coordinate system defined by the normal direction '''
+        
+        tvar_name = var_name+'_rot_z'
+        result = rotations.transformTimeDependentVector(self.q0_vec_z, 
+                                                        self.get(var_name).T,
+                                                        inverse=1).T
+        self.transformed_quantities.update({tvar_name : result})
+
+    def transform_one_vector_along_z(self, var_name):
+        ''' Transform the vector recognized by the key to the 
+        coordinate system defined by the normal direction '''
+        
+        tvar_name = var_name+'_rot_z'
+        result = rotations.transformTimeDependentVector(self.q0_z, 
+                                                        np.array([self.get(var_name)]).T,
+                                                        inverse=1).T
+        self.transformed_quantities.update({tvar_name : result[0]})
+
+
+    def transform_one_vector_along_xy(self, var_name):
+        ''' Transform the vector recognized by the key to the 
+        xy coordinate system defined at t_ref '''
+        
+        tvar_name = var_name.replace("rot_z", "rot_xyz")
+        result = rotations.transformTimeDependentVector(self.q1_xy, 
+                                                        np.array([self.get(var_name)]).T,
+                                                        inverse=1).T
+        self.transformed_quantities.update({tvar_name : result[0]})
+
+
+    def transform_one_vector_timeseries_along_xy(self, var_name):
+        ''' Transform the vector recognized by the key to the 
+        xy coordinate system defined at t_ref '''
+        
+        tvar_name = var_name.replace("rot_z", "rot_xyz")
+        result = rotations.transformTimeDependentVector(self.q1_vec_xy, 
+                                                        self.get(var_name).T, 
+                                                        inverse=1).T
+        self.transformed_quantities.update({tvar_name : result})
+
     def align_along_z(self):
         ''' Align the quantities along the Lhat direction '''
 
         # Align the z-direction
-        q0_z = rotations.alignVec_quat(self.Lhat)
-        q0_vec_z = np.array([q0_z]*self.n_hor_times).T
-        self.xA_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
-                                                        self.xA.T, 
-                                                        inverse=1).T
-        self.xB_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
-                                                        self.xB.T, 
-                                                        inverse=1).T
-        self.chiA_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
-                                                            self.chiA.T, 
-                                                            inverse=1).T
-        self.chiB_rot_z = rotations.transformTimeDependentVector(q0_vec_z, 
-                                                            self.chiB.T, 
-                                                            inverse=1).T
-
-        if np.shape(self.chiC_final) != (3,):
+        self.q0_z = rotations.alignVec_quat(self.Lhat)
+        self.q0_vec_z = np.array([self.q0_z]*self.n_hor_times).T
+        
+        if np.shape(self.get('chiC_final')) != (3,):
             raise ValueError('Expected a single spin triple for chiC_final')
         
-        self.chiC_final_rot_z = rotations.transformTimeDependentVector(np.array([q0_z]).T, 
-                                                            np.array([self.chiC_final]).T, 
-                                                            inverse=1).T
-        
-        if np.shape(self.v_kick) != (3,):
+        if np.shape(self.get('v_kick')) != (3,):
             raise ValueError('Expected a single spin triple for v_kick')
-        
-        self.v_kick_rot_z = rotations.transformTimeDependentVector(np.array([q0_z]).T,
-                                                            np.array([self.v_kick]).T, 
-                                                            inverse=1).T
-        q0_wfm_z = q0_vec_z = np.array([q0_z]*self.n_wfm_times).T
+
+        for var_name in self.vectors_to_transform.keys():
+            self.transform_one_vector_along_z(var_name)
+
+        for var_name in self.vector_timeseries_to_transform.keys():
+            self.transform_one_vector_timeseries_along_z(var_name)
+
+        q0_wfm_z = q0_vec_z = np.array([self.q0_z]*self.n_wfm_times).T
         self.waveform_modes_rot_z = rotations.transformWaveform(self.waveform_times, 
                                                         q0_wfm_z, 
                                                         self.waveform_modes_data, 
                                                         inverse=1)
-
         self.construct_interpolants_rot_z()
 
 
@@ -262,52 +274,45 @@ class CoordinateTransform:
         the normal vector and the line joining the two objects '''
 
         self.compute_orbital_phase()
-        q1_xy = rotations.zRotationQuat(self.phi_ref)
-        q1_xy_vec = np.array([q1_xy]*self.n_hor_times).T
+        self.q1_xy = rotations.zRotationQuat(self.phi_ref)
+        self.q1_vec_xy = np.array([self.q1_xy]*self.n_hor_times).T
 
-        self.xA_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
-                                                            self.xA_rot_z.T, 
-                                                            inverse=1).T
-        self.xB_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
-                                                            self.xB_rot_z.T, 
-                                                            inverse=1).T
-        self.chiA_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
-                                                            self.chiA_rot_z.T, 
-                                                            inverse=1).T
-        self.chiB_rot_xyz = rotations.transformTimeDependentVector(q1_xy_vec, 
-                                                            self.chiB_rot_z.T, 
-                                                            inverse=1).T
-        self.chiC_final_rot_xyz = rotations.transformTimeDependentVector(np.array([q1_xy]).T, 
-                                                            self.chiC_final_rot_z.T,
-                                                            inverse=1).T
-        self.v_kick_rot_xyz = rotations.transformTimeDependentVector(np.array([q1_xy]).T,
-                                                            self.v_kick_rot_z.T, 
-                                                            inverse=1).T
+        for var_name in self.vectors_to_transform.keys():
+            self.transform_one_vector_along_xy(var_name+"_rot_z")
+
+        for var_name in self.vector_timeseries_to_transform.keys():
+            self.transform_one_vector_timeseries_along_xy(var_name+"_rot_z")
+        
         self.waveform_modes_rot_xyz = rotations.transformWaveform(self.waveform_times, 
-                                                            np.array([q1_xy]*self.n_wfm_times).T, 
-                                                            self.waveform_modes_rot_z, 
-                                                            inverse=1)
+                                                            np.array([self.q1_xy]*self.n_wfm_times).T, 
+                                                            self.waveform_modes_rot_z,
+                                                            inverse=1,
+                                                            return_wfm=self.return_wfm)
+        
+        self.transformed_quantities.update({"waveform_modes_rot_xyz" : self.waveform_modes_rot_xyz})
 
     def compute_orbital_phase(self):
         ''' Compute the orbital phasing between the compact objects
         in the coordinate system aligned with Lhat at t_ref '''
 
-        #dX =  self.xA_rot_z[self.t_ref_idx_horizon,0] -self.xB_rot_z[self.t_ref_idx_horizon,0] 
-        #dY =  self.xA_rot_z[self.t_ref_idx_horizon,1] -self.xB_rot_z[self.t_ref_idx_horizon,1]
-        dX =  self.xA_rot_z_t(self.t_ref)[0] -self.xB_rot_z_t(self.t_ref)[0] 
-        dY =  self.xA_rot_z_t(self.t_ref)[1] -self.xB_rot_z_t(self.t_ref)[1]
-
+        dX =  self.eval('xA_rot_z', self.t_ref)[0] -self.eval('xB_rot_z', self.t_ref)[0]
+        dY =  self.eval('xA_rot_z', self.t_ref)[1] -self.eval('xB_rot_z', self.t_ref)[1]
+        dX_ts =  self.get('xA_rot_z')[:, 0] -self.get('xB_rot_z')[:, 0]
+        dY_ts =  self.get('xA_rot_z')[:, 1] -self.get('xB_rot_z')[:, 1]
+        self.phi_ts = np.array(np.angle(dX_ts + 1j*dY_ts))
+        #self.vector_timeseries_to_transform.update({'phiAB' : phi_ts})
+        #print(phi_ts.shape)
+        #self.interpolants.update({"phiAB" : self.interpolate(self.horizon_times, phi_ts)})
         self.phi_ref = np.angle(dX + 1j*dY)
-        
+
     def compute_orbital_phase_legacy(self):
         '''Compute the orbital phasing in the coordinate system aligned with Lhat at t_ref
         as the phase that one of the objects makes with the X axis? '''
 
         # Does this not retain the axis from ID frame?
         # Why not compute this using the relative orientation?
-        phi_A = np.angle(self.xA_rot_z[self.t_ref_idx_horizon,0] + 1.j*self.xA_rot_z[self.t_ref_idx_horizon,1])
-        phi_B = np.angle(-self.xB_rot_z[self.t_ref_idx_horizon,0] - 1.j*self.xB_rot_z[self.t_ref_idx_horizon,1])
-        # If this fails, try aligning at earlier times
+        phi_A = np.angle(self.eval_rough('xA_rot_z')[0] + 1.j*self.eval_rough('xA_rot_z')[1])
+        phi_B = np.angle(-self.eval_rough('xB_rot_z')[0] - 1.j*self.eval_rough('xB_rot_z')[1])
         dphase_ang = abs(np.angle(np.exp(1.j*(phi_A - phi_B))))
 
         if dphase_ang > 0.15:
@@ -318,7 +323,7 @@ class CoordinateTransform:
         self.phi_ref = self.phi_A
 
     def transform(self):
-        ''' Transform the parameters to the new frame aligned to t_ref '''
+        ''' Transform the parameters to the new frame at t_ref '''
 
         self.compute_angular_momentum_direction()
         self.compute_rotation_plane_normal()
@@ -335,9 +340,17 @@ class CoordinateTransform:
         self.align_along_xy()
         self.compute_reference_values()
 
-        keys = [ key for key in self.__dict__.keys() if 'xyz' in key]
+    def compute_reference_values(self):
+        
+        for var_name in self.ref_parameter_keys:
+            if var_name in self.vector_timeseries_to_transform.keys():
+                self.interpolants.update({f'{var_name}_rot_xyz': self.interpolate(self.horizon_times, self.get(f'{var_name}_rot_xyz'))})
+                self.reference_parameters.update({var_name : self.eval(f"{var_name}_rot_xyz", self.t_ref)})
+            
+            elif var_name in self.vectors_to_transform.keys():
+                self.reference_parameters.update({var_name : self.get(f"{var_name}_rot_xyz")})
 
-        for key, val in self.__dict__.items():
-            if ('xyz' in key) or ('ref' in key):
-                self.transformed_quantities.update({key : val})
 
+        self.omega_ref = InterpolatedUnivariateSpline(self.horizon_times, self.phi_ts, k=5).derivative()(self.t_ref)
+        self.reference_parameters.update({'phi' : self.phi_ref})
+        self.reference_parameters.update({'omega' : self.omega_ref})
