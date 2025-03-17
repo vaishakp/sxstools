@@ -304,6 +304,10 @@ class CoordinateTransform:
         #print(phi_ts.shape)
         #self.interpolants.update({"phiAB" : self.interpolate(self.horizon_times, phi_ts)})
         self.phi_ref = np.angle(dX + 1j*dY)
+        dr = np.array([dX, dY])
+        nhat = dr/(np.sqrt(np.dot(dr, dr)))
+        self.nhat = nhat
+        print("nhat", self.nhat)
 
     def compute_orbital_phase_legacy(self):
         '''Compute the orbital phasing in the coordinate system aligned with Lhat at t_ref
