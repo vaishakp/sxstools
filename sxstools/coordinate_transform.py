@@ -41,7 +41,8 @@ class CoordinateTransform:
                  ):
         
         self.t_ref = t_ref
-        if isinstance(waveform_modes, WaveformModes):
+        #if isinstance(waveform_modes, WaveformModes):
+        if "WaveformModes" in str(type(waveform_modes)):
             self.waveform_modes = waveform_modes
             self.waveform_modes_data = waveform_modes.data.T
             self.waveform_times = waveform_modes.t

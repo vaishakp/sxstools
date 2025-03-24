@@ -1,5 +1,6 @@
 from waveformtools.waveformtools import message, get_val_at_t_ref
 import h5py
+import numpy as np
 
 def get_horizon_quantities_from_h5(full_path_to_h, t_ref):
 
