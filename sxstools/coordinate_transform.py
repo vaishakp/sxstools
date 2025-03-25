@@ -108,6 +108,7 @@ class CoordinateTransform:
                     raise ValueError(f"Cannot add additional item {item} to list as it is a default item")
             self.vector_timeseries_to_transform.update(self.additional_vector_timeseries_to_transform)
 
+
         self.interpolants = {}
         self.construct_interpolants()
 
@@ -350,12 +351,17 @@ class CoordinateTransform:
         for var_name in self.ref_parameter_keys:
             if var_name in self.vector_timeseries_to_transform.keys():
                 self.interpolants.update({f'{var_name}_rot_xyz': self.interpolate(self.horizon_times, self.get(f'{var_name}_rot_xyz'))})
-                self.reference_parameters.update({var_name : self.eval(f"{var_name}_rot_xyz", self.t_ref)})
-            
+                self.reference_parameters.update({f'{var_name}' : self.eval(f"{var_name}", self.t_ref).tolist()})
+                self.reference_parameters.update({f'{var_name}_ref' : self.eval(f"{var_name}_rot_xyz", self.t_ref).tolist()})
+
             elif var_name in self.vectors_to_transform.keys():
-                self.reference_parameters.update({var_name : self.get(f"{var_name}_rot_xyz")})
+                self.reference_parameters.update({f'{var_name}' : self.get(f"{var_name}").tolist()})
+                self.reference_parameters.update({f'{var_name}_ref' : self.get(f"{var_name}_rot_xyz").tolist()})
 
-
-        self.omega_ref = InterpolatedUnivariateSpline(self.horizon_times, self.phi_ts, k=5).derivative()(self.t_ref)
-        self.reference_parameters.update({'phi' : self.phi_ref})
-        self.reference_parameters.update({'omega' : self.omega_ref})
+        self.omega_ref = InterpolatedUnivariateSpline(self.horizon_times, self.phi_ts, k=5).derivative()(self.t_ref).item()
+        #print("Omega_ref=", self.omega_ref, type(self.omega_ref))
+        self.reference_parameters.update({'phi_ref' : self.phi_ref})
+        self.reference_parameters.update({'omega_ref' : self.omega_ref})
+        self.reference_parameters.update({'Lhat' : self.Lhat.tolist()})
+        self.reference_parameters.update({'nhat' : self.nhat.tolist()})
+        self.reference_parameters.update({'Omegahat' : self.Omegahat.tolist()})
