@@ -21,16 +21,9 @@ class CoordinateTransform:
     '''
 
     def __init__(self,
-                 t_ref,
+                 NR_ref_parames,
+                 dynamics,
                  waveform_modes,
-                 massA,
-                 massB,
-                 xA,
-                 xB,
-                 chiA,
-                 chiB,
-                 chiC_final,
-                 v_kick,
                  normal_direction='Lhat',
                  Omegahat_choice='AhA',
                  waveform_times=None,
@@ -40,7 +33,8 @@ class CoordinateTransform:
                  return_wfm=True
                  ):
         
-        self.t_ref = t_ref
+
+        self.t_ref = NR_ref_parames['t_ref']
         #if isinstance(waveform_modes, WaveformModes):
         if "WaveformModes" in str(type(waveform_modes)):
             self.waveform_modes = waveform_modes
@@ -60,15 +54,15 @@ class CoordinateTransform:
                             "Please supply an SXS WaveformModes obj or"
                              "an ndarray with modes along the first axis")
         
-        self.massA = massA
-        self.massB = massB
-        self.xA = xA[:, 1:]
-        self.xB = xB[:, 1:]
-        self.chiA = chiA[:, 1:]
-        self.chiB = chiB[:, 1:]
-        self.chiC_final = chiC_final
-        self.v_kick = v_kick
-        self.horizon_times = xA[:, 0]
+        self.massA = NR_ref_parames['massA_ref']
+        self.massB = NR_ref_parames['massB_ref']
+        self.xA = dynamics['xA']
+        self.xB = dynamics['xB']
+        self.chiA = dynamics['chiA']
+        self.chiB = dynamics['chiB']
+        self.chiC_final = dynamics['chiC_final']
+        self.v_kick = dynamics['v_kick']
+        self.horizon_times = dynamics['times']
         self.t_ref_idx_horizon = np.argmin(abs(self.horizon_times - self.t_ref))
         self.n_wfm_times = len(self.waveform_times)
         self.n_hor_times = len(self.horizon_times)
@@ -115,8 +109,8 @@ class CoordinateTransform:
         # To hold the result
         self.transformed_quantities = {}
         self.ref_parameter_keys = ['chiA', 'chiB', 'chiC_final', 'v_kick']
-        self.reference_parameters = {'massA' : massA,
-                                     'massB' : massB}
+        self.reference_parameters = {'massA' : self.massA,
+                                     'massB' : self.massB}
 
     def construct_interpolants(self):
         ''' Construct interpolants for variables '''
@@ -306,7 +300,10 @@ class CoordinateTransform:
         #print(phi_ts.shape)
         #self.interpolants.update({"phiAB" : self.interpolate(self.horizon_times, phi_ts)})
         self.phi_ref = np.angle(dX + 1j*dY)
-        dr = np.array([dX, dY])
+        self.compute_nhat()
+        
+    def compute_nhat(self): 
+        dr =  self.eval('xA', self.t_ref) -self.eval('xB', self.t_ref)
         nhat = dr/(np.sqrt(np.dot(dr, dr)))
         self.nhat = nhat
         print("nhat", self.nhat)
