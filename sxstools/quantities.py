@@ -4,7 +4,7 @@ import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
 
 def get_dynamics_from_h5(full_path_to_h):
-
+    ''' Get the dynamics of the system from the `Horizons.h5` file '''
 
     with h5py.File(full_path_to_h) as hhf:
         #message(sim_name)
@@ -66,6 +66,9 @@ def get_dynamics_from_h5(full_path_to_h):
 
 
 def get_omega_from_dynamics(dynamics):
+    ''' Compute the instantaneous orbital angular velocity
+    from the dynamics dict '''
+
     time = dynamics["times"]
     xA = dynamics['xA']
     xB = dynamics['xB']
@@ -75,21 +78,19 @@ def get_omega_from_dynamics(dynamics):
     vy = InterpolatedUnivariateSpline(time, dxAB[:, 1], k=3).derivative()(time)
     vz = InterpolatedUnivariateSpline(time, dxAB[:, 2], k=3).derivative()(time)
     vAB = np.array([vx, vy, vz])
-    #print(vAB.shape, dxAB.shape)
     dAB = np.sqrt(np.sum(dxAB*dxAB, axis=1))
-    print(dAB.shape)
     r2_omega_vec = np.cross(dxAB, vAB.T)
     omega = np.sqrt(np.sum(r2_omega_vec*r2_omega_vec, axis=1))/(dAB**2)
 
     return omega
 
 def get_t_ref_from_dynamics_and_freq(dynamics, omega_ref=None, f_ref=None, Mtotal=None, t_junk=100):
-
+    ''' Find the value of `t_ref` from the dynamics and supplied frequency '''
     if f_ref is not None:
         if Mtotal is not None:
             import lal
             omega_ref = np.pi*f_ref*Mtotal*lal.MTSUN_SI
-            print("Omega_ref", omega_ref)
+            message("Omega_ref", omega_ref)
     else:
         raise ValueError("Please specify Mtotal")
             
@@ -104,15 +105,13 @@ def get_t_ref_from_dynamics_and_freq(dynamics, omega_ref=None, f_ref=None, Mtota
 
 
 def get_NR_ref_quantities_at_t_ref(t_ref, dynamics):
-
+    ''' Fetch the reference quantities in NR frame at `t_ref` '''
     times     = dynamics["times"]
     massA_arr = dynamics["massA"]
     massB_arr = dynamics["massB"]
 
     chiA_arr = dynamics["chiA"]
     chiB_arr = dynamics["chiB"]
-
-    print(chiA_arr.shape, chiB_arr.shape, times.shape)
 
     massA_ref = get_val_at_t_ref(times, massA_arr, t_ref)
     massB_ref = get_val_at_t_ref(times, massB_arr, t_ref)
