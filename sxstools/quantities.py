@@ -134,8 +134,8 @@ def get_NR_ref_quantities_at_t_ref(t_ref, dynamics):
                   "massC_final": dynamics["massC_final"],
                   "chiA_NR_ref": chiA_ref_NR,
                   "chiB_NR_ref": chiB_ref_NR,
-                  "chiC_final": dynamics["chiC_final"],
-                  "v_kick" : dynamics["v_kick"]
+                  "chiC_NR_final": dynamics["chiC_final"],
+                  "v_kick_NR" : dynamics["v_kick"]
                  }
     
     return ref_params
