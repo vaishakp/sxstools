@@ -32,12 +32,16 @@ setup(
         "pycbc",
         "sxs>=2022.5.6", 
         "waveformtools", # required for sxstools
-        "termcolor",
-        "spectral",
-        "numpydoc"
-        "spectral",
-        "sphinx-rtd-theme"
-        "recommonmark"
+        "termcolor",  
+        "datetime",
+        "sympy",
+        "numpydoc",
+        "config @ git+https://gitlab.com/vaishakp/config@master",
+        "spectral @ git+https://github.com/vaishakp/spectral@main",
+        "sphinx-rtd-theme",
+        "recommonmark",
+        "scri"
+
 
     ]
 )
