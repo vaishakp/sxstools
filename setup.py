@@ -37,5 +37,6 @@ setup(
         "scipy",
         "h5py",  
         "lalsuite", 
+        "waveformtools"
     ]
 )
