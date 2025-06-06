@@ -1,4 +1,4 @@
-from setuptools import Extension, setup, Command, find_packages
+from setuptools import setup, find_packages
 
 VERSION = '0.1'
 
@@ -11,7 +11,7 @@ setup(
     description = 'A sxstool package for generating SXS waveforms',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Kanchan Soni, Vaishak Prasad",
+    author="Vaishak Prasad, Kanchan Soni",
     author_email='ksoni01@syr.edu',
     url='https://github.com/Kanchan-05/sxstools',
     keywords=['gravitational waves', 'pycbc', 'sxs', 'nr data'],
@@ -19,8 +19,6 @@ setup(
     python_requires='>=3.10',
 
     classifiers=[
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Intended Audience :: Science/Research',
         'Natural Language :: English',
@@ -32,11 +30,14 @@ setup(
 
     install_requires=[
         "pycbc",
-        "sxs>=2022.5.6",
-        "numpy",
-        "scipy",
-        "h5py",  
-        "lalsuite", 
-        "waveformtools"
+        "sxs>=2022.5.6", 
+        "waveformtools", # required for sxstools
+        "termcolor",
+        "spectral",
+        "numpydoc"
+        "spectral",
+        "sphinx-rtd-theme"
+        "recommonmark"
+
     ]
 )
