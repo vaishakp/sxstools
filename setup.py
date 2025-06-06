@@ -11,7 +11,7 @@ setup(
     description = 'A sxstool package for generating SXS waveforms',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Kanchan Soni",
+    author="Kanchan Soni, Vaishak Prasad",
     author_email='ksoni01@syr.edu',
     url='https://github.com/Kanchan-05/sxstools',
     keywords=['gravitational waves', 'pycbc', 'sxs', 'nr data'],
