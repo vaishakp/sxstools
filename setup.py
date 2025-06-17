@@ -28,7 +28,7 @@ def get_requirements():
 
 setuptools.setup(
     name="sxstools",
- 	version="2025.06.16",
+ 	version="2025.06.17.2",
     author="Vaishak Prasad",
     author_email="vaishakprasad@gmail.com",
     description="Functions for handling SxS numerical relativity data",
