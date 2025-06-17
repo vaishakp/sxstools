@@ -258,15 +258,29 @@ class CoordinateTransform:
 
         for var_name in self.vector_timeseries_to_transform.keys():
             self.transform_one_vector_timeseries_along_z(var_name)
-
-        q0_wfm_z = q0_vec_z = np.array([self.q0_z]*self.n_wfm_times).T
-        self.waveform_modes_rot_z = rotations.transformWaveform(self.waveform_times, 
-                                                        q0_wfm_z, 
-                                                        self.waveform_modes_data, 
-                                                        inverse=1)
+        
+        self.align_waveform_modes_along_z()
         self.construct_interpolants_rot_z()
 
 
+    def align_waveform_modes_along_z(self, vec_z=None, return_wfm=False):
+
+        if (np.array(vec_z) == np.array(None)).any():
+            vec_z = self.Lhat
+    
+        q0_z = rotations.alignVec_quat(vec_z)
+
+        q0_wfm_z = q0_vec_z = np.array([q0_z]*self.n_wfm_times).T
+        
+        waveform_modes_rot_z = rotations.transformWaveform(self.waveform_times, 
+                                                        q0_wfm_z, 
+                                                        self.waveform_modes_data, 
+                                                        inverse=1,
+                                                        return_wfm=return_wfm)
+        
+        self.waveform_modes_rot_z = waveform_modes_rot_z
+        return waveform_modes_rot_z
+    
     def align_along_xy(self):
         ''' Align the coordinate system in the new xy directions as defined by
         the normal vector and the line joining the two objects '''
@@ -364,3 +378,156 @@ class CoordinateTransform:
         self.reference_parameters.update({'Lhat' : self.Lhat.tolist()})
         self.reference_parameters.update({'nhat' : self.nhat.tolist()})
         self.reference_parameters.update({'Omegahat' : self.Omegahat.tolist()})
+
+
+    def unit_vector_parameterized(self, theta, phi):
+
+        return np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)])
+    
+
+    def quadrupole_mode_power_residue_2d(self, angles, t_align_idx, total_power_at_align_idx):
+        
+        #theta = angles[0]
+        theta, phi = angles
+        #phi = 0
+        z_vec = self.unit_vector_parameterized(theta, phi)
+
+        aligned_waveform = self.align_waveform_modes_along_z(z_vec, return_wfm=True)
+        #print(type(aligned_waveform))
+
+        #res0 = np.sum(np.absolute(aligned_waveform.data - self.waveform_modes.data)**2)
+
+        #print(res0)
+
+        #if res0==0:
+        #    raise ValueError
+        
+        quad_power_at_ind = \
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, 2)])**2  +\
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, -2)])**2 +\
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, 1)])**2 +\
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, -1)])**2 +\
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, 0)])**2
+        
+        #total_power_at_ind = np.sum(abs(aligned_waveform.data[t_align_idx, :])**2)
+
+        #print(quad_power_at_ind/total_power_at_align_idx, quad_power_at_ind, total_power_at_align_idx)
+
+        #frac = quad_power_at_ind/total_power_at_align_idx
+
+        return 1e8*(total_power_at_align_idx - quad_power_at_ind)
+
+        #return abs((frac-1))
+    
+    def quadrupole_mode_power_residue(self, angles, t_align_idx, total_power_at_align_idx):
+        
+        theta = angles[0]
+        #theta, phi = angles
+        phi = 0
+        z_vec = self.unit_vector_parameterized(theta, phi)
+
+        aligned_waveform = self.align_waveform_modes_along_z(z_vec, return_wfm=True)
+        #print(type(aligned_waveform))
+
+        #res0 = np.sum(np.absolute(aligned_waveform.data - self.waveform_modes.data)**2)
+
+        #print(res0)
+
+        #if res0==0:
+        #    raise ValueError
+        
+        quad_power_at_ind = \
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, 2)])**2  +\
+              np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, -2)])**2
+        #      np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, 1)])**2 +\
+        #      np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, -1)])**2 +\
+        #      np.absolute(aligned_waveform.data[t_align_idx, aligned_waveform.index(2, 0)])**2
+        
+        #total_power_at_ind = np.sum(abs(aligned_waveform.data[t_align_idx, :])**2)
+
+        #print(quad_power_at_ind/total_power_at_align_idx, quad_power_at_ind, total_power_at_align_idx)
+
+        #frac = quad_power_at_ind/total_power_at_align_idx
+
+        return 1e8*(total_power_at_align_idx - quad_power_at_ind)
+    
+
+    def transform_to_principal(self, t_align, x0=np.pi/2):
+        ''' Find the principal direction at t_align and transform the waveform to it '''
+
+        from scipy.optimize import least_squares
+
+        total_power = np.sum( np.absolute(self.waveform_modes.data)**2, axis=1)
+        t_align_ind = np.argmin((self.waveform_times - t_align)**2)
+
+        result = least_squares(self.quadrupole_mode_power_residue, 
+                               x0=[x0], 
+                               args=[t_align_ind, total_power[t_align_ind]], 
+                               bounds=[[0], [np.pi]],
+                               ftol=1e-14,
+                               xtol=1e-14,
+                               gtol=1e-14)
+
+        return result
+        
+
+    def transform_to_principal_2d(self, t_align, x0=[np.pi/2, np.pi]):
+        ''' Find the principal direction at t_align and transform the waveform to it '''
+
+        from scipy.optimize import least_squares
+
+        total_power = np.sum( np.absolute(self.waveform_modes.data)**2, axis=1)
+        t_align_ind = np.argmin((self.waveform_times - t_align)**2)
+
+        result = least_squares(self.quadrupole_mode_power_residue_2d, 
+                               x0=x0, 
+                               args=[t_align_ind, total_power[t_align_ind]], 
+                               bounds=[[0, 0], [np.pi, 2*np.pi]],
+                               ftol=1e-14,
+                               xtol=1e-14,
+                               gtol=1e-21)
+
+        return result
+    
+
+    def transform_to_principal_1d(self, t_align, x0=[np.pi/2, np.pi]):
+        ''' Find the principal direction at t_align and transform the waveform to it '''
+
+        from scipy.optimize import least_squares
+
+        total_power = np.sum( np.absolute(self.waveform_modes.data)**2, axis=1)
+        t_align_ind = np.argmin((self.waveform_times - t_align)**2)
+
+        result = least_squares(self.quadrupole_mode_power_residue, 
+                               x0=x0, 
+                               args=[t_align_ind, total_power[t_align_ind]], 
+                               bounds=[[0, 0], [np.pi, 2*np.pi]],
+                               ftol=1e-14,
+                               xtol=1e-14,
+                               gtol=1e-21)
+
+        return result
+    
+
+    def transform_to_principal_manual(self, t_align, N=100):
+        ''' Find the principal direction at t_align and transform the waveform to it '''
+
+        from scipy.optimize import least_squares
+
+        total_power = np.sum(np.absolute(self.waveform_modes.data)**2, axis=1)
+        t_align_ind = np.argmin((self.waveform_times - t_align)**2)
+
+        theta_axis = np.linspace(0, np.pi, N)
+        residues = [self.quadrupole_mode_power_residue([theta_i], t_align_ind, total_power[t_align_ind]) for theta_i in theta_axis]
+
+        theta_max = theta_axis[np.argmin(residues)]
+
+        return theta_max, residues
+    
+
+
+
+
+
+    
+        
