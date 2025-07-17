@@ -30,7 +30,8 @@ class CoordinateTransform:
                  method='fine',
                  additional_vectors_to_transform=None,
                  additional_vector_timeseries_to_transform=None,
-                 return_wfm=True
+                 return_wfm=True,
+                 orthogonal_nhat=False
                  ):
         
 
@@ -72,6 +73,7 @@ class CoordinateTransform:
         self.additional_vectors_to_transform = additional_vectors_to_transform
         self.additional_vector_timeseries_to_transform = additional_vector_timeseries_to_transform
         self.return_wfm = return_wfm
+        self.orthogonal_nhat = orthogonal_nhat
 
         if self.method=='fine':
             self.eval = self.eval_rough
@@ -290,23 +292,39 @@ class CoordinateTransform:
     def compute_orbital_phase(self):
         ''' Compute the orbital phasing between the compact objects
         in the coordinate system aligned with Lhat at t_ref '''
-
-        dX =  self.eval('xA_rot_z', self.t_ref)[0] -self.eval('xB_rot_z', self.t_ref)[0]
-        dY =  self.eval('xA_rot_z', self.t_ref)[1] -self.eval('xB_rot_z', self.t_ref)[1]
-        dX_ts =  self.get('xA_rot_z')[:, 0] -self.get('xB_rot_z')[:, 0]
-        dY_ts =  self.get('xA_rot_z')[:, 1] -self.get('xB_rot_z')[:, 1]
+        dR =  self.eval('xA_rot_z', self.t_ref)-self.eval('xB_rot_z', self.t_ref)
+        dR_dot_Lhat = np.dot(dR, np.array([0,0,1]))
+        #dR_p = dR -
+        dX = dR[0]
+        dY = dR[1]         
+        #dX    =  self.eval('xA_rot_z', self.t_ref)[0] -self.eval('xB_rot_z', self.t_ref)[0]
+        #dY    =  self.eval('xA_rot_z', self.t_ref)[1] -self.eval('xB_rot_z', self.t_ref)[1]
+        dR_ts =  self.get('xA_rot_z') -self.get('xB_rot_z')
+        dX_ts = dR_ts[:, 0]
+        dY_ts = dR_ts[:, 1]
+        #dX_ts =  self.get('xA_rot_z')[:, 0] -self.get('xB_rot_z')[:, 0]
+        #dY_ts =  self.get('xA_rot_z')[:, 1] -self.get('xB_rot_z')[:, 1]
         self.phi_ts = np.array(np.angle(dX_ts + 1j*dY_ts))
         #self.vector_timeseries_to_transform.update({'phiAB' : phi_ts})
         #print(phi_ts.shape)
         #self.interpolants.update({"phiAB" : self.interpolate(self.horizon_times, phi_ts)})
+        # This is still orthogonal to Lhat because the z component is dropped 
+        # when computing the angle.
         self.phi_ref = np.angle(dX + 1j*dY)
         self.compute_nhat()
         
     def compute_nhat(self): 
         dr =  self.eval('xA', self.t_ref) -self.eval('xB', self.t_ref)
+        dr_dot_Lhat = np.dot(dr, self.Lhat)
+        assert dr_dot_Lhat<1e-8, "The LAL nhat is not sufficiently (<1e-8) orthogonal to Lnhat!."
+        dr_orth = dr - dr_dot_Lhat*dr
+
         nhat = dr/(np.sqrt(np.dot(dr, dr)))
+        nhat_orth = dr_orth/(np.sqrt(np.dot(dr_orth, dr_orth)))
         self.nhat = nhat
+        self.nhat_orth = nhat_orth
         print("nhat", self.nhat)
+        print("nhat_orth", self.nhat_orth)
 
     def compute_orbital_phase_legacy(self):
         '''Compute the orbital phasing in the coordinate system aligned with Lhat at t_ref
@@ -361,4 +379,5 @@ class CoordinateTransform:
         self.reference_parameters.update({'omega_ref' : self.omega_ref})
         self.reference_parameters.update({'Lhat' : self.Lhat.tolist()})
         self.reference_parameters.update({'nhat' : self.nhat.tolist()})
+        self.reference_parameters.update({'nhat_orth' : self.nhat_orth.tolist()})
         self.reference_parameters.update({'Omegahat' : self.Omegahat.tolist()})
