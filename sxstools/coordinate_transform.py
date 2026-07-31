@@ -3,6 +3,7 @@ from sxstools.transforms import transform_coordinate_system
 from sxstools.transforms import rotations
 from scri import WaveformModes
 from scipy.interpolate import InterpolatedUnivariateSpline
+from waveformtools.waveformtools import message
 
 class CoordinateTransform:
     ''' Transforms the coordinate system of a SpEC simulations from 
@@ -194,9 +195,19 @@ class CoordinateTransform:
         else:
             omegadt = omegaBdt
 
-        print("Omegahats", omegaAhat, omegaBhat)
+        message("Omegahats", omegaAhat, omegaBhat, message_verbosity=2)
         self.Omegahat = omegadt/np.sqrt((np.dot(omegadt, omegadt)))
 
+
+    def compute_separation(self):
+        ''' Compute the separation between the BHs at ref time'''
+
+        xA_ref = self.eval('xA', self.t_ref)
+        xB_ref = self.eval('xB', self.t_ref)
+
+        d_ref = np.sqrt(np.dot(xA_ref-xB_ref, xA_ref-xB_ref))
+
+        return d_ref
 
     def transform_one_vector_timeseries_along_z(self, var_name):
         ''' Transform the vector recognized by the key to the 
@@ -322,7 +333,7 @@ class CoordinateTransform:
         dr =  self.eval('xA', self.t_ref) -self.eval('xB', self.t_ref)
         nhat = dr/(np.sqrt(np.dot(dr, dr)))
         self.nhat = nhat
-        print("nhat", self.nhat)
+        message("nhat", self.nhat, message_verbosity=2)
 
     def compute_orbital_phase_legacy(self):
         '''Compute the orbital phasing in the coordinate system aligned with Lhat at t_ref
@@ -335,8 +346,8 @@ class CoordinateTransform:
         dphase_ang = abs(np.angle(np.exp(1.j*(phi_A - phi_B))))
 
         if dphase_ang > 0.15:
-           print("Horiozon ref idx:", self.t_ref_idx_horizon)
-           print("Waveform time extremes: min(self.waveform_times), max(self.waveform_times)")
+           message("Horiozon ref idx:", self.t_ref_idx_horizon, message_verbosity=3)
+           message(f"Waveform time extremes: {min(self.waveform_times)}, {max(self.waveform_times)}", message_verbosity=3)
            raise ValueError(f"Got different x-y rotations from the black holes! phase err={dphase_ang}")
 
         self.phi_ref = self.phi_A
@@ -346,7 +357,7 @@ class CoordinateTransform:
 
         self.compute_angular_momentum_direction()
         self.compute_rotation_plane_normal()
-        print(f"Lhat {self.Lhat}, Omegahat: {self.Omegahat}")
+        message(f"Lhat {self.Lhat}, Omegahat: {self.Omegahat}", message_verbosity=2)
 
         if self.normal_direction=='Lhat':
             self.z_hat = self.Lhat
@@ -372,7 +383,10 @@ class CoordinateTransform:
                 self.reference_parameters.update({f'{var_name}_ref' : self.get(f"{var_name}_rot_xyz").tolist()})
 
         self.omega_ref = InterpolatedUnivariateSpline(self.horizon_times, self.phi_ts, k=5).derivative()(self.t_ref).item()
+        self.d_ref = self.compute_separation()
+
         #print("Omega_ref=", self.omega_ref, type(self.omega_ref))
+        self.reference_parameters.update({'d_ref' : self.d_ref})
         self.reference_parameters.update({'phi_ref' : self.phi_ref})
         self.reference_parameters.update({'omega_ref' : self.omega_ref})
         self.reference_parameters.update({'Lhat' : self.Lhat.tolist()})
