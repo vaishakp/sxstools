@@ -57,6 +57,7 @@ class CoordinateTransform:
         
         self.massA = NR_ref_parames['massA_ref']
         self.massB = NR_ref_parames['massB_ref']
+        self.massC = NR_ref_parames['massC_final']
         self.xA = dynamics['xA']
         self.xB = dynamics['xB']
         self.chiA = dynamics['chiA']
@@ -112,7 +113,8 @@ class CoordinateTransform:
         self.transformed_quantities = {}
         self.ref_parameter_keys = ['chiA', 'chiB', 'chiC_final', 'v_kick']
         self.reference_parameters = {'massA' : self.massA,
-                                     'massB' : self.massB}
+                                     'massB' : self.massB,
+                                     'massC' : self.massC}
 
     def construct_interpolants(self):
         ''' Construct interpolants for variables '''

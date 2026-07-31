@@ -1,7 +1,7 @@
 import numpy as np
 from waveformtools.waveformtools import message, unsort
 from waveformtools.grids import GLGrid
-from qlmtools.diagnostics import method_info
+from waveformtools.diagnostics import MethodInfo as method_info
 from spectral.spherical.swsh import Yslm_vec, Yslm_prec
 from waveformtools.single_mode import SingleMode
 from spectral.chebyshev.chebyshev import ChebyshevSpectral
