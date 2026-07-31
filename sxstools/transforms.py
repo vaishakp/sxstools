@@ -2,9 +2,9 @@ import numpy as np
 from waveformtools.waveformtools import message, unsort
 from waveformtools.grids import GLGrid
 from waveformtools.diagnostics import MethodInfo as method_info
-from spectral.spherical.swsh import Yslm_vec, Yslm_prec
+from spectools.spherical.swsh import Yslm_vec, Yslm_prec
 from waveformtools.single_mode import SingleMode
-from spectral.chebyshev.chebyshev import ChebyshevSpectral
+from spectools.chebyshev.chebyshev import ChebyshevSpectral
 import sxstools.rotations as rotations
 
 import re
